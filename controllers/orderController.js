@@ -63,6 +63,8 @@ import {
     recordReferralOrderCompleted
 } from "../services/referralService.js";
 
+import { sendTelegramMessage } from "../services/telegramService.js";
+
 /* ============================================================
    CONSTANTS
 ============================================================ */
@@ -1059,6 +1061,42 @@ export async function createOrder(req, res) {
             throw transactionError;
         } finally {
             await session.endSession();
+        }
+
+        /*
+         * Telegram admin notification.
+         * Sent only after the transaction has committed and the session is
+         * closed, so a retried transaction callback can never notify twice.
+         * It is not awaited and every failure is only logged, so Telegram can
+         * never delay or break a successfully placed order.
+         */
+        try {
+            const telegramMessage = [
+                "📦 NEW SHADOWSMM ORDER",
+                "",
+                `Order ID: ${order.orderNumber}`,
+                `User: ${order.username}`,
+                `Service: ${order.serviceName}`,
+                `Category: ${order.category}`,
+                `Quantity: ${order.quantity}`,
+                `Charge: $${Number(order.charge).toFixed(2)} USD`,
+                `Status: ${order.status}`,
+                `Time: ${new Date().toISOString()}`
+            ].join("\n");
+
+            sendTelegramMessage(telegramMessage).catch(
+                (telegramError) => {
+                    console.error(
+                        `[ORDERS] createOrder: Telegram notification failed for order ${order.orderNumber}:`,
+                        telegramError?.message || telegramError
+                    );
+                }
+            );
+        } catch (telegramError) {
+            console.error(
+                `[ORDERS] createOrder: could not send Telegram notification for order ${order.orderNumber}:`,
+                telegramError?.message || telegramError
+            );
         }
 
         return res.status(201).json({

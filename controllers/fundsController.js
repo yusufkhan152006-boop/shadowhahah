@@ -43,6 +43,8 @@ import {
     uploadPaymentScreenshot
 } from "../services/cloudinaryService.js";
 
+import { sendTelegramMessage } from "../services/telegramService.js";
+
 /**
  * ============================================================
  * Constants
@@ -384,6 +386,37 @@ export async function createUpiRequest(req, res) {
 
         const result = await collections.requests.insertOne(request);
 
+        /*
+         * Telegram admin notification (non-blocking).
+         * Sent only after the request was saved. A Telegram failure is only
+         * logged and never affects the response below.
+         */
+        try {
+            void sendTelegramMessage(
+                [
+                    "💰 NEW SHADOWSMM FUNDS REQUEST",
+                    "",
+                    "Method: UPI",
+                    `User: ${request.username}`,
+                    `User ID: ${String(request.userId)}`,
+                    `Amount: ₹${Number(request.amount).toFixed(2)}`,
+                    `UTR: ${request.utr}`,
+                    "Status: Pending",
+                    `Time: ${new Date().toISOString()}`
+                ].join("\n")
+            ).catch((telegramError) => {
+                console.error(
+                    "[FUNDS] UPI Telegram notification failed:",
+                    telegramError?.message || telegramError
+                );
+            });
+        } catch (telegramError) {
+            console.error(
+                "[FUNDS] UPI Telegram notification could not be sent:",
+                telegramError?.message || telegramError
+            );
+        }
+
         return res.status(201).json({
             success: true,
             message: "UPI deposit request submitted for verification.",
@@ -566,6 +599,39 @@ export async function createCryptoRequest(req, res) {
         }
 
         const result = await collections.requests.insertOne(request);
+
+        /*
+         * Telegram admin notification (non-blocking).
+         * Sent only after the request was saved. A Telegram failure is only
+         * logged and never affects the response below.
+         */
+        try {
+            void sendTelegramMessage(
+                [
+                    "💰 NEW SHADOWSMM FUNDS REQUEST",
+                    "",
+                    "Method: Binance",
+                    `User: ${request.username}`,
+                    `User ID: ${String(request.userId)}`,
+                    `Amount: $${Number(request.amount).toFixed(2)} USD`,
+                    `Network: ${request.network}`,
+                    `Transaction ID: ${request.txHash || "Not provided"}`,
+                    `Screenshot: ${request.screenshotUrl || "Not provided"}`,
+                    "Status: Pending",
+                    `Time: ${new Date().toISOString()}`
+                ].join("\n")
+            ).catch((telegramError) => {
+                console.error(
+                    "[FUNDS] Binance Telegram notification failed:",
+                    telegramError?.message || telegramError
+                );
+            });
+        } catch (telegramError) {
+            console.error(
+                "[FUNDS] Binance Telegram notification could not be sent:",
+                telegramError?.message || telegramError
+            );
+        }
 
         return res.status(201).json({
             success: true,

@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { ObjectId } from "mongodb";
 import { getUsersCollection } from "../config/db.js";
 import { sign } from "../utils/jwt.js";
+import { sendTelegramMessage } from "../services/telegramService.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                 */
@@ -233,6 +234,37 @@ export async function register(req, res) {
         }
 
         user._id = inserted.insertedId;
+
+        /*
+         * Telegram admin notification (non-blocking).
+         * Sent only after the user was saved. Never includes the password,
+         * password hash or JWT. A Telegram failure is only logged and never
+         * affects the registration response.
+         */
+        try {
+            const telegramMessage = [
+                "🆕 NEW SHADOWSMM ACCOUNT",
+                `Username: ${user.username}`,
+                `Email: ${user.email}`,
+                `WhatsApp: ${user.whatsapp}`,
+                `User ID: ${user._id.toString()}`,
+                `Referral Code: ${user.referralCode}`,
+                `Role: ${user.role}`,
+                `Time: ${new Date().toISOString()}`
+            ].join("\n");
+
+            void sendTelegramMessage(telegramMessage).catch((error) => {
+                console.error(
+                    `${LOG_PREFIX} Telegram notification error:`,
+                    error?.message || error
+                );
+            });
+        } catch (error) {
+            console.error(
+                `${LOG_PREFIX} Telegram notification could not be sent:`,
+                error?.message || error
+            );
+        }
 
         const token = await sign(buildTokenPayload(user));
 
